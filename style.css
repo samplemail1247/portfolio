@@ -173,3 +173,19 @@ button {
     max-width: 60%;
   }
 }
+
+/* Smooth scrolling feel */
+#messages {
+  scroll-behavior: smooth;
+}
+
+/* Better hover */
+button:hover {
+  opacity: 0.9;
+  cursor: pointer;
+}
+
+/* Active user highlight (optional future upgrade) */
+.user-item.active {
+  background: #38bdf8;
+}
