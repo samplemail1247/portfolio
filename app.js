@@ -3,7 +3,8 @@ import {
   getDatabase,
   ref,
   push,
-  onChildAdded
+  onChildAdded,
+  off
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
@@ -55,11 +56,10 @@ function listenMessages() {
     const div = document.createElement("div");
     div.classList.add("message");
 
-    // Right side (user)
     if (msg.user === username) {
-      div.style.textAlign = "right";
+      div.classList.add("user");
     } else {
-      div.style.color = "#38bdf8"; // admin
+      div.classList.add("admin");
     }
 
     div.innerText = msg.text;
