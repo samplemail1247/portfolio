@@ -1,11 +1,10 @@
-/* RESET */
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: system-ui;
   background: #0f172a;
   color: white;
 }
@@ -32,37 +31,33 @@ input {
   padding: 10px;
   margin: 8px 0;
   border-radius: 8px;
+  border: none;
   font-size: 16px;
 }
 
 button {
-  width: 100%;
   padding: 10px;
   border: none;
   border-radius: 8px;
   background: #38bdf8;
   color: white;
-  font-size: 14p;
   font-weight: bold;
 }
 
-/* CHAT SCREEN */
+/* CHAT */
 .chat-container {
   display: flex;
   flex-direction: column;
   height: 100dvh;
 }
 
-/* HEADER (NEW - mobile feel) */
 .chat-header {
   padding: 12px;
   background: #020617;
   text-align: center;
   font-weight: bold;
-  border-bottom: 1px solid #1e293b;
 }
 
-/* MESSAGES */
 #messages {
   flex: 1;
   padding: 10px;
@@ -70,122 +65,79 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  scroll-behavior: smooth;
 }
 
-/* BUBBLES */
 .message {
   max-width: 85%;
-  padding: 10px 12px;
+  padding: 10px;
   border-radius: 14px;
-  font-size: 14px;
-  word-wrap: break-word;
 }
 
-/* USER (RIGHT) */
 .user {
   align-self: flex-end;
   background: #38bdf8;
-  color: white;
-  border-bottom-right-radius: 4px;
 }
 
-/* ADMIN (LEFT) */
 .admin {
   align-self: flex-start;
   background: #1e293b;
-  border-bottom-left-radius: 4px;
 }
 
-/* INPUT BAR (LIKE PHONE CHAT) */
 .input-area {
   display: flex;
   padding: 8px;
   background: #020617;
-  border-top: 1px solid #1e293b;
 }
 
 .input-area input {
   flex: 1;
-  margin: 0;
   border-radius: 20px;
-  padding: 10px;
 }
 
 .input-area button {
-  width: auto;
   margin-left: 8px;
-  border-radius: 20px;
-  padding: 10px 16px;
 }
 
-/* ADMIN PANEL */
-.admin-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
+/* ADMIN */
+.menu-btn {
+  display: none;
+  width: 100%;
 }
 
-/* USER LIST (MOBILE STYLE) */
 .users {
   display: flex;
   overflow-x: auto;
   background: #020617;
-  border-bottom: 1px solid #1e293b;
 }
 
 .user-item {
-  padding: 10px 15px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.user-item:hover {
-  background: #1e293b;
-}
-
-/* CHAT AREA */
-.chat {
-  flex: 1;
+  padding: 10px;
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
 }
 
-/* DESKTOP UPGRADE */
-@media (min-width: 768px) {
+.delete-btn {
+  background: red;
+  border: none;
+  padding: 4px 8px;
+}
 
-  .admin-container {
-    flex-direction: row;
+/* MOBILE */
+@media (max-width: 768px) {
+  .menu-btn {
+    display: block;
   }
 
   .users {
+    display: none;
+    position: absolute;
+    width: 100%;
+    top: 50px;
+  }
+
+  .users.active {
+    display: flex;
     flex-direction: column;
-    width: 220px;
-    height: 100%;
-    border-right: 1px solid #1e293b;
-    border-bottom: none;
   }
-
-  .user-item {
-    border-bottom: 1px solid #1e293b;
-  }
-
-  .message {
-    max-width: 60%;
-  }
-}
-
-/* Smooth scrolling feel */
-#messages {
-  scroll-behavior: smooth;
-}
-
-/* Better hover */
-button:hover {
-  opacity: 0.9;
-  cursor: pointer;
-}
-
-/* Active user highlight (optional future upgrade) */
-.user-item.active {
-  background: #38bdf8;
 }
