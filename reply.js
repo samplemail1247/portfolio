@@ -3,8 +3,9 @@ import {
   getDatabase,
   ref,
   push,
+  onValue,
   onChildAdded,
-  onValue
+  off
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
@@ -16,7 +17,7 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 let currentUser = "";
-let chatRef = null;
+let currentListener = null;
 
 // Load users list
 const usersRef = ref(db, "chats");
@@ -26,24 +27,33 @@ onValue(usersRef, (snapshot) => {
   userList.innerHTML = "";
 
   snapshot.forEach((child) => {
-    const username = child.key;
+    const name = child.key;
 
     const div = document.createElement("div");
-    div.innerText = username;
     div.classList.add("user-item");
+    div.innerText = name;
 
-    div.onclick = () => openChat(username);
+    div.onclick = () => openChat(name);
 
     userList.appendChild(div);
   });
 });
 
-// Open selected chat
+// Open chat safely (IMPORTANT FIX)
 function openChat(user) {
   currentUser = user;
-  chatRef = ref(db, "chats/" + user);
 
-  document.getElementById("messages").innerHTML = "";
+  const messagesDiv = document.getElementById("messages");
+  messagesDiv.innerHTML = "";
+
+  const chatRef = ref(db, "chats/" + user);
+
+  // Remove old listener (CRITICAL FIX)
+  if (currentListener) {
+    off(currentListener);
+  }
+
+  currentListener = chatRef;
 
   onChildAdded(chatRef, (snapshot) => {
     const msg = snapshot.val();
@@ -52,25 +62,27 @@ function openChat(user) {
     div.classList.add("message");
 
     if (msg.user === "ADMIN") {
-      div.style.textAlign = "right";
-      div.style.color = "#38bdf8";
+      div.classList.add("user");
+    } else {
+      div.classList.add("admin");
     }
 
     div.innerText = msg.text;
 
-    const messages = document.getElementById("messages");
-    messages.appendChild(div);
-    messages.scrollTop = messages.scrollHeight;
+    messagesDiv.appendChild(div);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
   });
 }
 
 // Send reply
 window.sendMessage = function () {
-  if (!chatRef) return alert("Select a user!");
+  if (!currentUser) return alert("Select a user!");
 
   const input = document.getElementById("messageInput");
   const text = input.value.trim();
   if (!text) return;
+
+  const chatRef = ref(db, "chats/" + currentUser);
 
   push(chatRef, {
     user: "ADMIN",
