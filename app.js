@@ -1,20 +1,19 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-
 import {
   getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
 import {
   getDatabase,
   ref,
   push,
-  onChildAdded
+  onValue,
+  off,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-/* FIREBASE CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyCar5tl_EGeRHhvQke8IJITDi_zAArlN8c",
   authDomain: "chat-project-c5409.firebaseapp.com",
@@ -31,80 +30,193 @@ const db = getDatabase(app);
 
 let currentUser = null;
 let chatRef = null;
+let messagesListener = null;
+let listeningRef = null;
 
-/* SIGNUP */
-window.signup = async () => {
-  const email = document.getElementById("emailInput").value.trim();
-  const password = document.getElementById("passwordInput").value.trim();
+const emailInput = document.getElementById("emailInput");
+const passwordInput = document.getElementById("passwordInput");
+const authStatus = document.getElementById("authStatus");
+const chatTitle = document.getElementById("chatTitle");
+const chatStatus = document.getElementById("chatStatus");
+const messageInput = document.getElementById("messageInput");
+const sendButton = document.getElementById("sendButton");
+const messagesEl = document.getElementById("messages");
 
-  if (!email || !password) return alert("Enter email & password");
+setComposerState(false);
+setChatState("Conversation", "Waiting");
 
-  try {
-    await createUserWithEmailAndPassword(auth, email, password);
-  } catch (err) {
-    alert(err.message);
-  }
-};
-
-/* LOGIN */
-window.login = async () => {
-  const email = document.getElementById("emailInput").value.trim();
-  const password = document.getElementById("passwordInput").value.trim();
-
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-  } catch (err) {
-    alert(err.message);
-  }
-};
-
-/* AUTH STATE */
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    currentUser = user;
-
-    chatRef = ref(db, `chats/${user.uid}`);
-
-    document.getElementById("login").style.display = "none";
-    document.getElementById("chat").style.display = "block";
-
-    listenMessages();
+emailInput.addEventListener("keydown", handleAuthEnter);
+passwordInput.addEventListener("keydown", handleAuthEnter);
+messageInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    window.sendMessage();
   }
 });
 
-/* SEND */
-window.sendMessage = () => {
-  const input = document.getElementById("messageInput");
-  const text = input.value.trim();
+function handleAuthEnter(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    window.login();
+  }
+}
 
-  if (!text) return;
+function setComposerState(enabled) {
+  messageInput.disabled = !enabled;
+  sendButton.disabled = !enabled;
+}
 
-  push(chatRef, {
-    user: currentUser.email,
-    text,
-    time: Date.now()
-  });
+function setAuthStatus(message, isError = false) {
+  authStatus.textContent = message;
+  authStatus.style.color = isError ? "#dc2626" : "";
+}
 
-  input.value = "";
-};
+function setChatState(title, status) {
+  chatTitle.textContent = title;
+  chatStatus.innerHTML = `<span class="status-dot"></span>${status}`;
+}
 
-/* LISTEN */
-function listenMessages() {
-  onChildAdded(chatRef, (snapshot) => {
-    renderMessage(snapshot.val());
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
   });
 }
 
-/* RENDER */
+function getDisplayName(user) {
+  if (!user?.email) return "Conversation";
+  return user.email;
+}
+
+window.signup = async () => {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value.trim();
+
+  if (!email || !password) {
+    setAuthStatus("Enter both email and password to continue.", true);
+    return;
+  }
+
+  if (password.length < 6) {
+    setAuthStatus("Password must be at least 6 characters long.", true);
+    return;
+  }
+
+  try {
+    setAuthStatus("Creating your account...");
+    await createUserWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    setAuthStatus(error.message, true);
+  }
+};
+
+window.login = async () => {
+  const email = emailInput.value.trim();
+  const password = passwordInput.value.trim();
+
+  if (!email || !password) {
+    setAuthStatus("Enter both email and password to continue.", true);
+    return;
+  }
+
+  try {
+    setAuthStatus("Signing you in...");
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    setAuthStatus(error.message, true);
+  }
+};
+
+onAuthStateChanged(auth, (user) => {
+  if (!user) {
+    currentUser = null;
+    detachMessagesListener();
+    chatRef = null;
+    document.getElementById("login").style.display = "flex";
+    document.getElementById("chat").style.display = "none";
+    setComposerState(false);
+    setChatState("Conversation", "Waiting");
+    return;
+  }
+
+  currentUser = user;
+  chatRef = ref(db, `chats/${user.uid}`);
+
+  document.getElementById("login").style.display = "none";
+  document.getElementById("chat").style.display = "block";
+
+  setComposerState(true);
+  setAuthStatus("Signed in.");
+  setChatState(getDisplayName(user), "Connected");
+  listenMessages();
+});
+
+window.sendMessage = async () => {
+  if (!chatRef || !currentUser) return;
+
+  const text = messageInput.value.trim();
+  if (!text) return;
+
+  sendButton.disabled = true;
+
+  try {
+    await push(chatRef, {
+      user: currentUser.email,
+      text,
+      time: serverTimestamp()
+    });
+
+    messageInput.value = "";
+    messageInput.focus();
+  } finally {
+    sendButton.disabled = false;
+  }
+};
+
+function detachMessagesListener() {
+  if (listeningRef && messagesListener) {
+    off(listeningRef, "value", messagesListener);
+  }
+
+  messagesListener = null;
+  listeningRef = null;
+}
+
+function listenMessages() {
+  if (!chatRef) return;
+
+  detachMessagesListener();
+
+  messagesListener = onValue(chatRef, (snapshot) => {
+    messagesEl.innerHTML = "";
+
+    snapshot.forEach((childSnapshot) => {
+      renderMessage(childSnapshot.val() || {});
+    });
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
+
+  listeningRef = chatRef;
+}
+
 function renderMessage(msg) {
   const div = document.createElement("div");
-  div.classList.add("message");
+  const isOwnMessage = msg.user === currentUser?.email;
 
-  div.classList.add(msg.user === currentUser.email ? "user" : "admin");
+  div.classList.add("message", isOwnMessage ? "user" : "admin");
 
-  div.innerText = msg.text;
+  const meta = document.createElement("div");
+  meta.className = "message-meta";
+  meta.textContent = `${isOwnMessage ? "You" : "Support"}${msg.time ? ` - ${formatTime(msg.time)}` : ""}`;
 
-  const messages = document.getElementById("messages");
-  messages.appendChild(div);
-  messages.scrollTop = messages.scrollHeight;
+  const body = document.createElement("div");
+  body.className = "message-body";
+  body.textContent = msg.text || "";
+
+  div.appendChild(meta);
+  div.appendChild(body);
+  messagesEl.appendChild(div);
 }

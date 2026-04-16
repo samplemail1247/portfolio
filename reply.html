@@ -25,19 +25,19 @@
       <div class="chat-header">
         <div>
           <p class="header-kicker">Admin console</p>
-          <h2>Reply panel</h2>
+          <h2 id="replyTitle">Reply panel</h2>
         </div>
-        <div class="header-status">
+        <div class="header-status" id="replyStatus">
           <span class="status-dot"></span>
-          Ready
+          Select a chat
         </div>
       </div>
 
       <div id="messages"></div>
 
       <div class="input-area">
-        <input id="messageInput" placeholder="Write a reply..." />
-        <button onclick="sendMessage()">Send</button>
+        <input id="messageInput" placeholder="Select a chat to reply..." disabled />
+        <button id="sendButton" onclick="sendMessage()" disabled>Send</button>
       </div>
     </div>
   </div>

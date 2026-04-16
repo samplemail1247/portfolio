@@ -4,12 +4,11 @@ import {
   ref,
   push,
   onValue,
-  onChildAdded,
   off,
-  remove
+  remove,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-/* CONFIG */
 const firebaseConfig = {
   apiKey: "AIzaSyCar5tl_EGeRHhvQke8IJITDi_zAArlN8c",
   databaseURL: "https://chat-project-c5409-default-rtdb.asia-southeast1.firebasedatabase.app"
@@ -20,115 +19,220 @@ const db = getDatabase(app);
 
 let currentUser = "";
 let currentRef = null;
+let messagesListener = null;
+let listeningRef = null;
 
-/* TOGGLE USERS (MOBILE) */
+const userListEl = document.getElementById("userList");
+const messagesEl = document.getElementById("messages");
+const messageInput = document.getElementById("messageInput");
+const sendButton = document.getElementById("sendButton");
+const replyTitle = document.getElementById("replyTitle");
+const replyStatus = document.getElementById("replyStatus");
+
+setComposerState(false);
+setReplyState("Reply panel", "Select a chat");
+
+messageInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    window.sendMessage();
+  }
+});
+
 window.toggleUsers = () => {
-  document.getElementById("userList").classList.toggle("active");
+  userListEl.classList.toggle("active");
 };
 
-/* LOAD USERS (SORTED) */
+function setComposerState(enabled) {
+  messageInput.disabled = !enabled;
+  sendButton.disabled = !enabled;
+}
+
+function setReplyState(title, status) {
+  replyTitle.textContent = title;
+  replyStatus.innerHTML = `<span class="status-dot"></span>${status}`;
+}
+
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function summarizeText(text) {
+  return (text || "No messages yet").replace(/\s+/g, " ").trim().slice(0, 42) || "No messages yet";
+}
+
+function detachMessagesListener() {
+  if (listeningRef && messagesListener) {
+    off(listeningRef, "value", messagesListener);
+  }
+
+  messagesListener = null;
+  listeningRef = null;
+}
+
 const usersRef = ref(db, "chats");
 
 onValue(usersRef, (snapshot) => {
-  const userList = document.getElementById("userList");
-  userList.innerHTML = "";
-
   const users = [];
+  userListEl.innerHTML = "";
 
-  snapshot.forEach((child) => {
+  snapshot.forEach((chatSnapshot) => {
     let lastTime = 0;
+    let lastText = "";
 
-    child.forEach(msg => {
-      lastTime = Math.max(lastTime, msg.val().time || 0);
+    chatSnapshot.forEach((messageSnapshot) => {
+      const value = messageSnapshot.val() || {};
+      const nextTime = value.time || 0;
+
+      if (nextTime >= lastTime) {
+        lastTime = nextTime;
+        lastText = value.text || "";
+      }
     });
 
-    users.push({ name: child.key, lastTime });
+    users.push({
+      name: chatSnapshot.key,
+      lastTime,
+      lastText
+    });
   });
 
   users.sort((a, b) => b.lastTime - a.lastTime);
 
-  users.forEach(({ name }) => {
-    userList.appendChild(createUserItem(name));
+  users.forEach((user) => {
+    userListEl.appendChild(createUserItem(user));
   });
+
+  if (!users.length) {
+    currentUser = "";
+    detachMessagesListener();
+    currentRef = null;
+    messagesEl.innerHTML = "";
+    messageInput.value = "";
+    setComposerState(false);
+    setReplyState("Reply panel", "No chats");
+    return;
+  }
+
+  const currentStillExists = users.some((user) => user.name === currentUser);
+
+  if (!currentStillExists) {
+    openChat(users[0].name);
+  } else {
+    highlightActiveUser();
+  }
 });
 
-/* CREATE USER ITEM WITH DELETE */
-function createUserItem(name) {
+function createUserItem({ name, lastText }) {
   const div = document.createElement("div");
   div.classList.add("user-item");
+  div.dataset.user = name;
+  div.onclick = () => openChat(name);
 
-  const span = document.createElement("span");
-  span.innerText = name;
-  span.onclick = () => openChat(name);
+  const textWrap = document.createElement("div");
+  textWrap.className = "user-text";
 
-  const del = document.createElement("button");
-  del.innerText = "✕";
-  del.classList.add("delete-btn");
+  const nameEl = document.createElement("span");
+  nameEl.className = "user-name";
+  nameEl.textContent = name;
 
-  del.onclick = (e) => {
-    e.stopPropagation();
+  const previewEl = document.createElement("small");
+  previewEl.className = "user-preview";
+  previewEl.textContent = summarizeText(lastText);
+
+  const deleteButton = document.createElement("button");
+  deleteButton.textContent = "X";
+  deleteButton.className = "delete-btn";
+  deleteButton.onclick = (event) => {
+    event.stopPropagation();
     deleteUser(name);
   };
 
-  div.appendChild(span);
-  div.appendChild(del);
+  textWrap.appendChild(nameEl);
+  textWrap.appendChild(previewEl);
+  div.appendChild(textWrap);
+  div.appendChild(deleteButton);
 
   return div;
 }
 
-/* OPEN CHAT */
 function openChat(user) {
   currentUser = user;
-
-  const messagesDiv = document.getElementById("messages");
-  messagesDiv.innerHTML = "";
-
-  if (currentRef) off(currentRef);
-
+  detachMessagesListener();
   currentRef = ref(db, `chats/${user}`);
 
-  onChildAdded(currentRef, (snapshot) => {
-    renderMessage(snapshot.val());
+  setComposerState(true);
+  setReplyState(user, "Live thread");
+  messagesEl.innerHTML = "";
+
+  messagesListener = onValue(currentRef, (snapshot) => {
+    messagesEl.innerHTML = "";
+
+    snapshot.forEach((childSnapshot) => {
+      renderMessage(childSnapshot.val() || {});
+    });
+
+    messagesEl.scrollTop = messagesEl.scrollHeight;
   });
 
-  // close menu on mobile after click
-  document.getElementById("userList").classList.remove("active");
+  listeningRef = currentRef;
+  highlightActiveUser();
+  userListEl.classList.remove("active");
 }
 
-/* SEND */
-window.sendMessage = () => {
-  if (!currentUser) return alert("Select a user!");
+window.sendMessage = async () => {
+  if (!currentUser) return;
 
-  const input = document.getElementById("messageInput");
-  const text = input.value.trim();
-
+  const text = messageInput.value.trim();
   if (!text) return;
 
-  push(ref(db, `chats/${currentUser}`), {
-    user: "ADMIN",
-    text,
-    time: Date.now()
-  });
+  sendButton.disabled = true;
 
-  input.value = "";
+  try {
+    await push(ref(db, `chats/${currentUser}`), {
+      user: "ADMIN",
+      text,
+      time: serverTimestamp()
+    });
+
+    messageInput.value = "";
+    messageInput.focus();
+  } finally {
+    sendButton.disabled = false;
+  }
 };
 
-/* DELETE USER */
 function deleteUser(name) {
   if (!confirm(`Delete ${name}?`)) return;
-
   remove(ref(db, `chats/${name}`));
 }
 
-/* RENDER */
+function highlightActiveUser() {
+  document.querySelectorAll(".user-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.user === currentUser);
+  });
+}
+
 function renderMessage(msg) {
   const div = document.createElement("div");
-  div.classList.add("message");
-  div.classList.add(msg.user === "ADMIN" ? "user" : "admin");
+  const isAdmin = msg.user === "ADMIN";
 
-  div.innerText = msg.text;
+  div.classList.add("message", isAdmin ? "user" : "admin");
 
-  const messages = document.getElementById("messages");
-  messages.appendChild(div);
-  messages.scrollTop = messages.scrollHeight;
+  const meta = document.createElement("div");
+  meta.className = "message-meta";
+  meta.textContent = `${isAdmin ? "Admin" : "Customer"}${msg.time ? ` - ${formatTime(msg.time)}` : ""}`;
+
+  const body = document.createElement("div");
+  body.className = "message-body";
+  body.textContent = msg.text || "";
+
+  div.appendChild(meta);
+  div.appendChild(body);
+  messagesEl.appendChild(div);
 }
