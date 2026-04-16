@@ -185,23 +185,29 @@ async function handleAdminSendMessage(e) {
   const text = elements.adminMessageInput.value.trim();
   if (!text || !state.activeUserId) return;
 
-  setComposerBusy(true);
-
-  const { error } = await supabaseClient.from("messages").insert({
+  console.log("SENDING:", {
     user_id: state.activeUserId,
     sender: "ADMIN",
-    text,
+    text
   });
 
-  setComposerBusy(false); // ✅ ALWAYS reset
+  const { data, error } = await supabaseClient
+    .from("messages")
+    .insert({
+      user_id: state.activeUserId,
+      sender: "ADMIN",
+      text,
+    })
+    .select();
+
+  console.log("RESULT:", { data, error });
 
   if (error) {
-    setAuthStatus(error.message);
+    alert(error.message);
     return;
   }
 
   elements.adminMessageInput.value = "";
-  validateSendState();
 }
 
 // 🗑 DELETE USER
