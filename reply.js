@@ -182,14 +182,20 @@ async function handleAdminSendMessage(e) {
 
   setComposerBusy(true);
 
-  await supabaseClient.from("messages").insert({
+  const { error } = await supabaseClient.from("messages").insert({
     user_id: state.activeUserId,
     sender: "ADMIN",
     text,
   });
 
+  setComposerBusy(false); // ✅ ALWAYS reset
+
+  if (error) {
+    setAuthStatus(error.message);
+    return;
+  }
+
   elements.adminMessageInput.value = "";
-  setComposerBusy(false);
   validateSendState();
 }
 
