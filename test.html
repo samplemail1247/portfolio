@@ -21,7 +21,7 @@ const supabase = window.supabase.createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5bWlmY3Npb2JudWtna3JlY2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTQ1NjgsImV4cCI6MjA5MTg5MDU2OH0.UVLwpoHjo8X9ansWXrQhWyzEDuhhKJ4jvZdItbfW6ok"
 );
 
-async function insertUser() {
+window.insertUser = async function () {
   const email = document.getElementById("email").value;
   const password = document.getElementById("password").value;
   const result = document.getElementById("result");
@@ -37,8 +37,9 @@ async function insertUser() {
     result.innerText = "✅ Success";
     console.log(data);
   }
-}
+};
 </script>
+
 
 </body>
 </html>
