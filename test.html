@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html>
 <head>
   <title>DB Test</title>
@@ -9,37 +8,51 @@
 
 <h2>Insert User</h2>
 
-<input id="email" placeholder="Email"><br><br> <input id="password" placeholder="Password"><br><br>
+<input id="email" placeholder="Email"><br><br>
+<input id="password" type="password" placeholder="Password"><br><br>
 
-<button onclick="insertUser()">Insert</button>
+<button id="insertBtn">Insert</button>
 
 <p id="result"></p>
 
 <script>
-const supabase = window.supabase.createClient(
-  "https://kymifcsiobnukgkreckd.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5bWlmY3Npb2JudWtna3JlY2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTQ1NjgsImV4cCI6MjA5MTg5MDU2OH0.UVLwpoHjo8X9ansWXrQhWyzEDuhhKJ4jvZdItbfW6ok"
-);
+document.addEventListener("DOMContentLoaded", () => {
 
-window.insertUser = async function () {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-  const result = document.getElementById("result");
+  // ✅ Create Supabase client ONCE
+  const supabaseClient = window.supabase.createClient(
+    "https://kymifcsiobnukgkreckd.supabase.co",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5bWlmY3Npb2JudWtna3JlY2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTQ1NjgsImV4cCI6MjA5MTg5MDU2OH0.UVLwpoHjo8X9ansWXrQhWyzEDuhhKJ4jvZdItbfW6ok"
+  );
 
-  const { data, error } = await supabase
-    .from("users")
-    .insert([{ email, password }]);
+  // ✅ Attach event instead of inline onclick
+  document.getElementById("insertBtn").addEventListener("click", insertUser);
 
-  if (error) {
-    result.innerText = "❌ " + error.message;
-    console.log(error);
-  } else {
-    result.innerText = "✅ Success";
-    console.log(data);
+  async function insertUser() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const result = document.getElementById("result");
+
+    // ✅ Basic validation
+    if (!email || !password) {
+      result.innerText = "⚠️ Enter email and password";
+      return;
+    }
+
+    const { data, error } = await supabaseClient
+      .from("users")
+      .insert([{ email, password }]);
+
+    if (error) {
+      result.innerText = "❌ " + error.message;
+      console.error(error);
+    } else {
+      result.innerText = "✅ User inserted!";
+      console.log(data);
+    }
   }
-};
-</script>
 
+});
+</script>
 
 </body>
 </html>
