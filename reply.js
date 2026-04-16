@@ -1,4 +1,3 @@
-<script>
 const SUPABASE_URL = "https://kymifcsiobnukgkreckd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5bWlmY3Npb2JudWtna3JlY2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTQ1NjgsImV4cCI6MjA5MTg5MDU2OH0.UVLwpoHjo8X9ansWXrQhWyzEDuhhKJ4jvZdItbfW6ok";
 
@@ -90,4 +89,3 @@ async function deleteUser(userId) {
 
 // INIT
 loadUsers();
-</script>
