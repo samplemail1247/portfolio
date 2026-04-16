@@ -1,15 +1,26 @@
+// 🔒 Prevent double initialization
+if (window.__appInitialized) {
+  throw new Error("App already initialized");
+}
+window.__appInitialized = true;
+
+// 🔗 Supabase setup
 const SUPABASE_URL = "https://kymifcsiobnukgkreckd.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5bWlmY3Npb2JudWtna3JlY2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMTQ1NjgsImV4cCI6MjA5MTg5MDU2OH0.UVLwpoHjo8X9ansWXrQhWyzEDuhhKJ4jvZdItbfW6ok";
 
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
 
+// 📦 App State
 const state = {
-  session: null,
   profile: null,
   messages: [],
   channel: null,
 };
 
+// 🎯 DOM Elements
 const elements = {
   authPanel: document.getElementById("authPanel"),
   chatLayout: document.getElementById("chatLayout"),
@@ -27,14 +38,16 @@ const elements = {
   userEmailChip: document.getElementById("userEmailChip"),
 };
 
+// 🚀 Init
 document.addEventListener("DOMContentLoaded", init);
 
 function init() {
   bindEvents();
   validateMessageInput();
-  initializeSession();
+  showAuth();
 }
 
+// 🔗 Events
 function bindEvents() {
   elements.authForm.addEventListener("submit", handleLogin);
   elements.registerButton.addEventListener("click", handleRegister);
@@ -43,82 +56,73 @@ function bindEvents() {
   elements.logoutButton.addEventListener("click", handleLogout);
 }
 
-async function initializeSession() {
-  setAuthStatus("Loading session...", "success");
-
-  const {
-    data: { session },
-  } = await supabaseClient.auth.getSession();
-
-  supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
-    state.session = nextSession;
-
-    if (nextSession?.user) {
-      bootstrapChat(nextSession.user).catch(handleError);
-      return;
-    }
-
-    teardownChat();
-    showAuth();
-  });
-
-  state.session = session;
-
-  if (session?.user) {
-    await bootstrapChat(session.user);
-  } else {
-    setAuthStatus("");
-  }
-}
-
+// 🔑 LOGIN
 async function handleLogin(event) {
   event.preventDefault();
 
   const email = elements.email.value.trim().toLowerCase();
   const password = elements.password.value;
-  const validationError = validateCredentials(email, password);
 
+  const validationError = validateCredentials(email, password);
   if (validationError) {
     setAuthStatus(validationError, "error");
     return;
   }
 
-  setAuthLoading(true, "Signing you in...");
+  setAuthLoading(true, "Logging in...");
 
-  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabaseClient
+    .from("users")
+    .select("*")
+    .eq("email", email)
+    .eq("password", password)
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
     setAuthLoading(false);
-    setAuthStatus(error.message, "error");
+    setAuthStatus("Invalid email or password", "error");
     return;
   }
 
-  state.session = data.session;
+  state.profile = data;
+
   setAuthLoading(false);
-  setAuthStatus("Signed in successfully.", "success");
+  setAuthStatus("Login successful", "success");
+
+  await bootstrapChat(data);
 }
 
+// 🧾 REGISTER
 async function handleRegister() {
   const email = elements.email.value.trim().toLowerCase();
   const password = elements.password.value;
-  const validationError = validateCredentials(email, password);
 
+  const validationError = validateCredentials(email, password);
   if (validationError) {
     setAuthStatus(validationError, "error");
     return;
   }
 
-  setAuthLoading(true, "Creating your account...");
+  setAuthLoading(true, "Creating account...");
 
-  const { data: duplicateUser } = await supabaseClient.from("users").select("id").eq("email", email).maybeSingle();
+  // check duplicate
+  const { data: existing } = await supabaseClient
+    .from("users")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
 
-  if (duplicateUser) {
+  if (existing) {
     setAuthLoading(false);
-    setAuthStatus("An account with this email already exists.", "error");
+    setAuthStatus("Email already exists", "error");
     return;
   }
 
-  const { data, error } = await supabaseClient.auth.signUp({ email, password });
+  const { data, error } = await supabaseClient
+    .from("users")
+    .insert([{ email, password }])
+    .select()
+    .single();
 
   if (error) {
     setAuthLoading(false);
@@ -126,91 +130,52 @@ async function handleRegister() {
     return;
   }
 
-  if (!data.user) {
-    setAuthLoading(false);
-    setAuthStatus("Signup completed, but no user was returned.", "error");
-    return;
-  }
-
-  if (data.session) {
-    await ensureUserRecord(data.user);
-    setAuthStatus("Account created. You can start chatting now.", "success");
-  } else {
-    setAuthStatus("Account created. Confirm your email if your Supabase project requires it.", "success");
-  }
+  state.profile = data;
 
   setAuthLoading(false);
+  setAuthStatus("Account created!", "success");
+
+  await bootstrapChat(data);
 }
 
+// 💬 CHAT START
 async function bootstrapChat(user) {
-  state.profile = await ensureUserRecord(user);
-  elements.userEmailChip.textContent = state.profile.email;
+  state.profile = user;
+  elements.userEmailChip.textContent = user.email;
+
   showChat();
   setChatLoading(true);
+
   await loadMessages();
-  subscribeToMessages(state.profile.id);
+  subscribeToMessages(user.id);
+
   setChatLoading(false);
 }
 
-async function ensureUserRecord(user) {
-  const email = (user.email || "").trim().toLowerCase();
-
-  const { data: existingUser, error: existingError } = await supabaseClient
-    .from("users")
-    .select("id, email, created_at")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
-  if (existingUser) {
-    return existingUser;
-  }
-
-  const { data: duplicateEmail } = await supabaseClient.from("users").select("id").eq("email", email).maybeSingle();
-
-  if (duplicateEmail) {
-    throw new Error("This email is already linked to another profile.");
-  }
-
-  const { data, error } = await supabaseClient
-    .from("users")
-    .insert({ id: user.id, email })
-    .select("id, email, created_at")
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
+// 📥 LOAD MESSAGES
 async function loadMessages() {
   const { data, error } = await supabaseClient
     .from("messages")
-    .select("id, user_id, sender, text, created_at")
+    .select("*")
     .eq("user_id", state.profile.id)
     .order("created_at", { ascending: true });
 
   if (error) {
-    throw error;
+    handleError(error);
+    return;
   }
 
   state.messages = data || [];
   renderMessages();
 }
 
+// 📤 SEND MESSAGE
 async function handleSendMessage(event) {
   event.preventDefault();
 
   const text = elements.messageInput.value.trim();
 
-  if (!text || !state.profile?.id) {
-    return;
-  }
+  if (!text || !state.profile?.id) return;
 
   toggleSendButton(true);
 
@@ -231,6 +196,7 @@ async function handleSendMessage(event) {
   validateMessageInput();
 }
 
+// 🔄 REALTIME
 function subscribeToMessages(userId) {
   cleanupChannel();
 
@@ -244,76 +210,53 @@ function subscribeToMessages(userId) {
         table: "messages",
         filter: `user_id=eq.${userId}`,
       },
-      ({ new: nextMessage }) => {
-        if (state.messages.some((message) => message.id === nextMessage.id)) {
-          return;
-        }
-
-        state.messages.push(nextMessage);
+      ({ new: msg }) => {
+        if (state.messages.some((m) => m.id === msg.id)) return;
+        state.messages.push(msg);
         renderMessages();
-      },
+      }
     )
     .subscribe();
 }
 
-async function handleLogout() {
-  await supabaseClient.auth.signOut();
+// 🚪 LOGOUT
+function handleLogout() {
   teardownChat();
 }
 
+// 🧹 CLEANUP
 function teardownChat() {
   cleanupChannel();
   state.profile = null;
   state.messages = [];
   elements.messageInput.value = "";
   renderMessages();
+  validateMessageInput();
   showAuth();
 }
 
 function cleanupChannel() {
-  if (!state.channel) {
-    return;
-  }
-
+  if (!state.channel) return;
   supabaseClient.removeChannel(state.channel);
   state.channel = null;
 }
 
+// 🎨 UI
 function renderMessages() {
   elements.messages.innerHTML = "";
 
   if (!state.messages.length) {
-    elements.messages.innerHTML = `
-      <div class="empty-state">
-        <h3>Start conversation</h3>
-        <p>Send your first message and our support team will reply here in real time.</p>
-      </div>
-    `;
+    elements.messages.innerHTML = "<p>No messages yet</p>";
     return;
   }
 
-  const fragment = document.createDocumentFragment();
-
-  state.messages.forEach((message) => {
-    const row = document.createElement("div");
-    row.className = `message-row ${message.sender === "USER" ? "user" : "admin"}`;
-
-    const bubble = document.createElement("div");
-    bubble.className = "message-bubble";
-    bubble.innerHTML = `
-      <div>${escapeHtml(message.text)}</div>
-      <div class="message-meta">${message.sender} &bull; ${formatTimestamp(message.created_at)}</div>
-    `;
-
-    row.appendChild(bubble);
-    fragment.appendChild(row);
+  state.messages.forEach((msg) => {
+    const div = document.createElement("div");
+    div.textContent = `${msg.sender}: ${msg.text}`;
+    elements.messages.appendChild(div);
   });
 
-  elements.messages.appendChild(fragment);
-
-  requestAnimationFrame(() => {
-    elements.messages.scrollTop = elements.messages.scrollHeight;
-  });
+  elements.messages.scrollTop = elements.messages.scrollHeight;
 }
 
 function showAuth() {
@@ -326,74 +269,41 @@ function showChat() {
   elements.chatLayout.classList.remove("hidden");
 }
 
+// ⚙️ HELPERS
 function setAuthLoading(isLoading, message = "") {
   elements.loginButton.disabled = isLoading;
   elements.registerButton.disabled = isLoading;
   elements.email.disabled = isLoading;
   elements.password.disabled = isLoading;
-  setAuthStatus(message, isLoading ? "success" : "");
+  setAuthStatus(message);
 }
 
 function setChatLoading(isLoading) {
   elements.messageInput.disabled = isLoading;
-  elements.sendButton.disabled = isLoading || !elements.messageInput.value.trim();
+  elements.sendButton.disabled = isLoading;
 }
 
 function toggleSendButton(isBusy) {
   elements.messageInput.disabled = isBusy;
-  elements.sendButton.disabled = isBusy || !elements.messageInput.value.trim();
+  elements.sendButton.disabled = isBusy;
 }
 
 function validateMessageInput() {
-  elements.sendButton.disabled = !elements.messageInput.value.trim() || elements.messageInput.disabled;
+  elements.sendButton.disabled =
+    !elements.messageInput.value.trim() || elements.messageInput.disabled;
 }
 
 function setAuthStatus(message, type = "") {
   elements.authStatus.textContent = message;
-  elements.authStatus.className = "status-message";
-
-  if (type === "error") {
-    elements.authStatus.classList.add("is-error");
-  }
-
-  if (type === "success") {
-    elements.authStatus.classList.add("is-success");
-  }
 }
 
 function validateCredentials(email, password) {
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-  if (!emailPattern.test(email)) {
-    return "Please enter a valid email address.";
-  }
-
-  if (password.length < 6) {
-    return "Password must be at least 6 characters.";
-  }
-
+  if (!email.includes("@")) return "Invalid email";
+  if (password.length < 6) return "Password must be at least 6 characters";
   return "";
-}
-
-function formatTimestamp(value) {
-  return new Intl.DateTimeFormat([], {
-    hour: "numeric",
-    minute: "2-digit",
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value));
-}
-
-function escapeHtml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function handleError(error) {
   console.error(error);
-  setAuthStatus(error.message || "Something went wrong.", "error");
+  setAuthStatus(error.message || "Error", "error");
 }
